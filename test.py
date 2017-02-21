@@ -17,8 +17,8 @@ sf = Salesforce(username='dmitriy.rozhdestvenskiy@veeam.com', password='I^C92!T!
                 security_token='dNr44yHsFXaSuRmKXunWPlzS')
 #configuring Grab:
 logging.basicConfig(level=logging.INFO)
-#g = Grab()
-#g.setup(log_dir='log/grab')
+g = Grab()
+g.setup(log_dir='log/grab')
 
 
 def fetch_new_kbs():
@@ -49,6 +49,19 @@ def fetch_new_kbs():
                 'KnowledgeArticleId' : str(result[0][6]),
                 'URL' : str('https://www.veeam.com/kb' + str(result[0][2]))
                 }
+                g.go(dict['URL'], follow_location=False)
+                if g.doc.code == 301 or g.doc.code == 302:
+                    print(g.doc.url + ' doesn\'t exists')
+                elif g.doc.code == 200:
+                    div = (g.doc.select('//div[@class="vrow"]/div[@class="col-12 border-bottom"]').text())
+                    dict['Products'] = re.findall('Products: (.*)\sVersion:', div)[0]
+                    dict['Version'] = re.findall('Version:\s(.*)\sPublished', div)[0]
+                    try:
+                        dict['Languages'] = re.findall('Modified:\s(20\d{2}-\d{2}-\d{2})', div)[0]
+                    except:
+                        dict['Languages'] = 'EN'
+                else:
+                    print('Error: unexpected answer code: ' + str(g.doc.code) + ' on page: ' + g.doc.url)
             except:
                 error_handler = traceback.format_exc()
                 print('....unable to parse KB entry:\n' + error_handler)
@@ -56,7 +69,7 @@ def fetch_new_kbs():
                 continue
             #print(str(dict['URL']) + ' status: ')
             try:
-                cursor.execute("insert into [dbo].[KnowledgeArticles] ([ID],[title],[url],[KB_ID],[Published],[Last_Modified],[OwnerId],[KnowledgeArticleId]) values (NEWID(),?,?,?,?,?,?,?)", dict['Title'], dict['URL'], dict['Id'], dict['FirstPublishedDate'].replace('-', ''), dict['LastPublishedDate'].replace('-', ''), dict['OwnerId'], dict['KnowledgeArticleId'])
+                cursor.execute("insert into [dbo].[KnowledgeArticles] ([ID],[title],[url],[KB_ID],[Published],[Last_Modified],[OwnerId],[KnowledgeArticleId],[Products],[Version],[Languages],[Last_check],[is_uptodate]) values (NEWID(),?,?,?,?,?,?,?,?,?,?,getdate(),'1')", dict['Title'], dict['URL'], dict['Id'], dict['FirstPublishedDate'].replace('-', ''), dict['LastPublishedDate'].replace('-', ''), dict['OwnerId'], dict['KnowledgeArticleId'], dict['Products'], dict['Version'], dict['Languages'])
                 cnxn.commit()
                 print(str(dict['URL']) + ' status: ')
                 print('....committed')
@@ -77,7 +90,6 @@ def fetch_new_kbs():
 Result = fetch_new_kbs()
 print(Result)
 
-#g.go(path, follow_location = False)
 
 
 
