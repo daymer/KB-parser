@@ -12,7 +12,8 @@ Languages nvarchar(255) NULL,
 Last_check datetime NULL,
 is_uptodate bit NULL,
 OwnerId nvarchar(255),
-KnowledgeArticleId nvarchar(255)
+KnowledgeArticleId nvarchar(255),
+OwnerName nvarchar(255)
 )
 
 CREATE UNIQUE INDEX iKB_ID ON KnowledgeArticles (KB_ID)

@@ -14,12 +14,12 @@ driver = '{ODBC Driver 13 for SQL Server}'
 cnxn = pyodbc.connect('DRIVER='+driver+';PORT=1433;SERVER='+server+';PORT=1443;DATABASE='+database+';UID='+username+';PWD='+ password)
 cursor = cnxn.cursor()
 #configuring SF connection:
-sf = Salesforce(username='some', password='data',
+sf = Salesforce(username='some', password='pass',
                 security_token='here')
 #configuring Grab:
 logging.basicConfig(level=logging.INFO)
 g = Grab()
-g.setup(log_dir='log/grab')
+g.setup(log_dir='log/KBpages')
 
 
 def checking_existence(dictionary):
@@ -63,6 +63,18 @@ def get_fields_from_internet(dictionary):
         return 'Error'
 
 
+def get_fs_user_name_by_id(user_id):
+    request = str(
+        sf.query(
+            "SELECT Name FROM user where Id='" + user_id + "'"))
+    request_line = request.split("OrderedDict([('attributes', OrderedDict([('type', 'KnowledgeArticleVersion'), ")
+    try:
+        owner_name = re.findall("\('Name',\s'([A-Za-z'\s]*)'\)", str(request_line))
+    except:
+        owner_name = 'not defined'
+    return owner_name[0]
+
+
 def fetch_new_kbs():
     skipped = 0
     added = 0
@@ -81,6 +93,7 @@ def fetch_new_kbs():
                 result = re.findall(
                     "\('Id',\s'(ka\d*\w*)'\),\s\('Title',\s['\"](.*)['\"]\),\s\('ArticleNumber',\s'00000(\d{4})'\),\s\('OwnerId',\s'(\d{10}\w{8})'\),\s\('FirstPublishedDate',\s'(201\d-\d{2}-\d{2})T\d{2}:\d{2}:\d{2}.\d{3}\+\d{4}'\),\s\('LastPublishedDate',\s'(201\d-\d{2}-\d{2})T\d{2}:\d{2}:\d{2}.\d{3}\+\d{4}'\),\s\('KnowledgeArticleId',\s'(kA\w*)'\)\]\)",
                     Line)
+
                 dict = {
                     'Id': str(result[0][0]),
                     'Title': str(result[0][1]),
@@ -89,7 +102,8 @@ def fetch_new_kbs():
                     'FirstPublishedDate': str(result[0][4]),
                     'LastPublishedDate': str(result[0][5]),
                     'KnowledgeArticleId': str(result[0][6]),
-                    'URL': str('https://www.veeam.com/kb' + str(result[0][2]))
+                    'URL': str('https://www.veeam.com/kb' + str(result[0][2])),
+                    'OwnerName': get_fs_user_name_by_id(str(result[0][3]))
                 }
                 kb_last_modified = checking_existence(dict)
                 if datetime.strptime(dict['LastPublishedDate'], '%Y-%m-%d') == kb_last_modified:
@@ -107,10 +121,10 @@ def fetch_new_kbs():
                         cursor.execute(
                             "insert into [dbo].[KnowledgeArticles] ([ID],[title],[url],[KB_ID],[Published],"
                             "[Last_Modified],[OwnerId],[KnowledgeArticleId],[Products],[Version],[Languages],"
-                            "[Last_check],[is_uptodate]) values (NEWID(),?,?,?,?,?,?,?,?,?,?,getdate(),'1')",
+                            "[Last_check],[is_uptodate],[OwnerName]) values (NEWID(),?,?,?,?,?,?,?,?,?,?,getdate(),'1',?)",
                             dict['Title'], dict['URL'], dict['Id'], dict['FirstPublishedDate'].replace('-', ''),
                             dict['LastPublishedDate'].replace('-', ''), dict['OwnerId'], dict['KnowledgeArticleId'],
-                            dict['Products'], dict['Version'], dict['Languages'])
+                            dict['Products'], dict['Version'], dict['Languages'], dict['OwnerName'])
                         cnxn.commit()
                         print(str(dict['URL']) + ' was added to DB')
                         added += 1
