@@ -5,21 +5,25 @@ import pyodbc
 import re
 import traceback
 from datetime import datetime
+from PythonConfluenceAPI import ConfluenceAPI
+import KB_upload
+#configuring Confluence connection:
+api = ConfluenceAPI('admin', 'password', 'http://ee.support2.veeam.local')
 #configuring SQL connection:
-server = 'ALISSON\SQLEXPRESS'
+server = 'sup-a1631\SQLEXPRESS'
 database = 'KnowledgeArticles'
-username = 'KBparser'
-password = '123@qwe'
+username = 'test'
+password = 'password'
 driver = '{ODBC Driver 13 for SQL Server}'
 cnxn = pyodbc.connect('DRIVER='+driver+';PORT=1433;SERVER='+server+';PORT=1443;DATABASE='+database+';UID='+username+';PWD='+ password)
 cursor = cnxn.cursor()
 #configuring SF connection:
-sf = Salesforce(username='some', password='pass',
-                security_token='here')
+sf = Salesforce(username='username', password='password',
+                security_token='security_token')
 #configuring Grab:
-logging.basicConfig(level=logging.INFO)
+#logging.basicConfig(level=logging.INFO)
 g = Grab()
-g.setup(log_dir='log/KBpages')
+#g.setup(log_dir='log/KBpages')
 
 
 def checking_existence(dictionary):
@@ -41,7 +45,7 @@ def checking_existence(dictionary):
 def get_fields_from_internet(dictionary):
     g.go(dictionary['URL'], follow_location=False)
     if g.doc.code == 301 or g.doc.code == 302:
-        print(g.doc.url + ' doesn\'t exists')
+        #print(g.doc.url + ' doesn\'t exists')
         return 'not_exists'
     elif g.doc.code == 200:
         div = (g.doc.select('//div[@class="vrow"]/div[@class="col-12 border-bottom"]').text())
@@ -62,7 +66,6 @@ def get_fields_from_internet(dictionary):
         print('Error: unexpected answer code: ' + str(g.doc.code) + ' on page: ' + g.doc.url)
         return 'Error'
 
-
 def get_fs_user_name_by_id(user_id):
     request = str(
         sf.query(
@@ -74,11 +77,12 @@ def get_fs_user_name_by_id(user_id):
         owner_name = 'not defined'
     return owner_name[0]
 
-
 def fetch_new_kbs():
     skipped = 0
     added = 0
     failed = 0
+    failed_urls = []
+    updated = 0
     request = str(
         sf.query(
             "SELECT ID, Title, ArticleNumber, OwnerID, FirstPublishedDate, LastPublishedDate, KnowledgeArticleID  FROM KnowledgeArticleVersion where PublishStatus='Online' and language ='en_US'"))
@@ -105,17 +109,19 @@ def fetch_new_kbs():
                     'URL': str('https://www.veeam.com/kb' + str(result[0][2])),
                     'OwnerName': get_fs_user_name_by_id(str(result[0][3]))
                 }
+                print(dict['URL'])
                 kb_last_modified = checking_existence(dict)
                 if datetime.strptime(dict['LastPublishedDate'], '%Y-%m-%d') == kb_last_modified:
-                    print(dict['URL'] + ' wasn\'t modified')
+                    #print(dict['URL'] + ' wasn\'t modified')
                     skipped += 1
                 elif kb_last_modified == 'NONE':
-                    dict_after_intrnet = get_fields_from_internet(dict)
-                    if dict_after_intrnet != 'not_exists':
-                        dict = dict_after_intrnet
+                    dict_after_internet = get_fields_from_internet(dict)
+                    if dict_after_internet != 'not_exists':
+                        dict = dict_after_internet
                     else:
-                        print(str(dict['URL']) + ' URL does\'t exists')
+                        #print(str(dict['URL']) + ' URL does\'t exists')
                         failed += 1
+                        failed_urls.append({dict['URL'], 'URL does not exists'})
                         continue
                     try:
                         cursor.execute(
@@ -131,40 +137,79 @@ def fetch_new_kbs():
                     except pyodbc.DataError:
                         cnxn.rollback()
                         error_handler = traceback.format_exc()
-                        print(str(dict['URL'] + ' rolled back due to the following error:\n' + error_handler + '\n dict: ' + str(dict)))
+                        #print(str(dict['URL'] + ' rolled back due to the following error:\n' + error_handler + '\n dict: ' + str(dict)))
                         failed += 1
+                        failed_urls.append({dict['URL'], str('insert rolled back due to the following error:\n' + error_handler + '\n dict: ' + str(dict))})
                     except pyodbc.IntegrityError:
-                        print(str(dict['URL']) + ' status: ')
-                        print('...seems that this KB was already added')
+                        #print(str(dict['URL']) + ' already added')
                         skipped += 1
                         continue
                 else:
                     #dict['LastPublishedDate'] != kb_last_modified
-                    dict_after_intrnet = get_fields_from_internet(dict)
-                    if dict_after_intrnet != 'not_exists':
-                        dict = dict_after_intrnet
+                    dict_after_internet = get_fields_from_internet(dict)
+                    if dict_after_internet != 'not_exists':
+                        dict = dict_after_internet
                     else:
+                        # print(str(dict['URL']) + ' URL does\'t exists')
                         failed += 1
-                        print(str(dict['URL']) + ' URL does\'t exists')
+                        failed_urls.append({dict['URL'], 'URL does\'t exists'})
                         continue
                     #here we will update DB... somehow
+                    try:
+                        cursor.execute("UPDATE [dbo].[KnowledgeArticles] SET is_uptodate ='0' WHERE url = ?",
+                                       dict['URL'])
+                        cnxn.commit()
+                        updated =+ 1
+                        try:
+                            cursor.execute(
+                                "UPDATE [dbo].[KnowledgeArticles] SET [title]=?, [Last_Modified]=?,[Products]=?,[Version]=?, [Languages]=?, [Last_check]=GetDate(),[is_uptodate]='1' WHERE url = ?",
+                                dict['Title'],dict['LastPublishedDate'],dict['Products'], dict['Version'], dict['Languages'],dict['URL'])
+                            cnxn.commit()
+                        except:
+                            cnxn.rollback()
+                            error_handler = traceback.format_exc()
+                            print(str(dict[
+                                          'URL'] + ' update was rolled back due to the following error:\n' + error_handler + '\n dict: ' + str(
+                                dict)))
+                            failed += 1
+                    except:
+                        cnxn.rollback()
+                        error_handler = traceback.format_exc()
+                        print(str(dict['URL'] + ' update was rolled back due to the following error:\n' + error_handler + '\n dict: ' + str(dict)))
+                        failed += 1
             except:
                 error_handler = traceback.format_exc()
                 print('....unable to parse FS KB entry:\n' + error_handler)
                 failed += 1
                 continue
-    result = str(len(request_line)) + ' KBs were parsed, ' + str(added) + ' were added, ' + str(
-        skipped) + ' were skipped and ' + str(failed) + ' were failed to become parsed or added'
-    return result
+    result = {
+        'parsed' : len(request_line),
+        'added' : added,
+        'skipped' : skipped,
+        'failed' : failed,
+        'updated' : updated
+    }
+    if result['failed'] == 0:
+        return result
+    else:
+        return result,failed_urls
 
-print(fetch_new_kbs())
+result = fetch_new_kbs()
+if len(result) == 1:
+    if result['added'] > 0 or result['updated'] > 0:
+        print(result)
+        Uploader = KB_upload.add_all_pages('17498235', 'List of all KBs', KB_upload.create_new_global_body(), '1081415')
+        print(Uploader[0])
+    else:
+        print(result)
+else:
+    if result[0]['added'] > 0 or result[0]['updated'] > 0:
+        print(result[0])
+        print('Errors were found in: \n' + result[1])
+        Uploader = KB_upload.add_all_pages('17498235', 'List of all KBs', KB_upload.create_new_global_body(), '1081415')
+        print(Uploader[0])
+    else:
+        print(result[0])
+        print('Errors were found in: \n' + result[1])
 
 
-
-
-'''
-cursor.execute("select @@VERSION")
-row = cursor.fetchone()
-if row:
-    print(row)
-'''

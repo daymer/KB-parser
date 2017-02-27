@@ -25,3 +25,19 @@ CREATE UNIQUE INDEX iURL ON KnowledgeArticles (url)
 	drop index KnowledgeArticles.iID
 
 */
+
+SELECT TOP 1000 [ID]
+      ,[title]
+      ,[url]
+      ,[KB_ID]
+      ,[Products]
+      ,[Version]
+      ,[Published]
+      ,[Last_Modified]
+      ,[Languages]
+      ,[Last_check]
+      ,[is_uptodate]
+      ,[OwnerId]
+      ,[KnowledgeArticleId]
+      ,[OwnerName]
+  FROM [KnowledgeArticles].[dbo].[KnowledgeArticles] where [Last_check] between dateadd(hh,-1,getdate()) and GETDATE()
