@@ -2,7 +2,7 @@ from PythonConfluenceAPI import ConfluenceAPI
 import pyodbc
 import traceback
 
-api = ConfluenceAPI('user', 'password', 'http://ee.support2.veeam.local')
+api = ConfluenceAPI('user', 'password', 'URL')
 #configuring SQL connection:
 server = 'sup-a1631\SQLEXPRESS'
 database = 'KnowledgeArticles'
@@ -27,14 +27,14 @@ def create_new_global_body():
                  '</tr>'
     cursor.execute("select [title],[url],[Products],[Version],[OwnerName],[Languages],[Published],[Last_Modified] FROM [KnowledgeArticles].[dbo].[KnowledgeArticles] order by [url]")
     rows = cursor.fetchall()
-    number = 0
+    number_of_pages = 0
     for row in rows:
         if row:
-            number = number + 1
+            number_of_pages = number_of_pages + 1
             row[6] = str(row[6])[:10]
             row[7] = str(row[7])[:10]
             newbodysection = '<tr>' \
-                             '<td> ' + str(number) + '</td> ' \
+                             '<td> ' + str(number_of_pages) + '</td> ' \
                              '<td>' + row[0].replace('&', '&amp;').replace('<', '{').replace('>', '}') + '</td>' \
                              '<td><a href="' + row[1] + '">' + row[1] + '</a></td>' \
                              '<td>' + row[2].replace(';', ', ').replace('&', '&amp;') + '</td>' \
@@ -71,7 +71,7 @@ def add_all_pages(content_id, title, pagebody, ancestor):
     }
     try:
         api.update_content_by_id(content, content_id)
-        return str(str(number) + ' pages were updated'), number
+        return str('pages were updated, numm of version: ' + str(number)), number
     except:
         return 'error', traceback.format_exc()
 
