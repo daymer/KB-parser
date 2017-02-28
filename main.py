@@ -7,25 +7,19 @@ import traceback
 from datetime import datetime
 from PythonConfluenceAPI import ConfluenceAPI
 import KB_upload
+import Configuration
+ConfluenceConfig = Configuration.ConfluenceConfig()
+SQLConfig = Configuration.SQLConfig()
+SFConfig = Configuration.SFConfig()
 #configuring Confluence connection:
-api = ConfluenceAPI('admin', 'password', 'http://ee.support2.veeam.local')
+api = ConfluenceAPI(ConfluenceConfig.USER, ConfluenceConfig.PASS, ConfluenceConfig.ULR)
 #configuring SQL connection:
-server = 'sup-a1631\SQLEXPRESS'
-database = 'KnowledgeArticles'
-username = 'test'
-password = 'password'
-driver = '{ODBC Driver 13 for SQL Server}'
-cnxn = pyodbc.connect('DRIVER='+driver+';PORT=1433;SERVER='+server+';PORT=1443;DATABASE='+database+';UID='+username+';PWD='+ password)
+cnxn = pyodbc.connect('DRIVER='+SQLConfig.Driver+';PORT=1433;SERVER='+SQLConfig.Server+';PORT=1443;DATABASE='+SQLConfig.Database+';UID='+SQLConfig.Username+';PWD='+SQLConfig.Password)
 cursor = cnxn.cursor()
 #configuring SF connection:
-sf = Salesforce(username='username', password='password',
-                security_token='security_token')
+sf = Salesforce(username=SFConfig.User, password=SFConfig.Password, security_token=SFConfig.SecurityToken)
 #configuring Grab:
-#logging.basicConfig(level=logging.INFO)
 g = Grab()
-#g.setup(log_dir='log/KBpages')
-
-
 def checking_existence(dictionary):
     cursor.execute(
         "select CONVERT(datetime,[Last_Modified],101) FROM [dbo].[KnowledgeArticles] where [url] = '" + dictionary[
@@ -205,11 +199,11 @@ if len(result) == 1:
 else:
     if result[0]['added'] > 0 or result[0]['updated'] > 0:
         print(result[0])
-        print('Errors were found in: \n' + result[1])
+        print('Errors were found in: \n' + str(result[1]))
         Uploader = KB_upload.add_all_pages('17498235', 'List of all KBs', KB_upload.create_new_global_body(), '1081415')
         print(Uploader[0])
     else:
         print(result[0])
-        print('Errors were found in: \n' + result[1])
+        print('Errors were found in: \n' + str(result[1]))
 
 
